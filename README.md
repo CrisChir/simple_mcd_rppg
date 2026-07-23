@@ -20,8 +20,9 @@ This repository provides a simplified approach to **remote photoplethysmography 
 This work uses a **derivative dataset** based on:
 
 **Source Dataset**: [wengziheng/mcd_rppg](https://huggingface.co/datasets/wengziheng/mcd_rppg)
+Original dataset is unprocessed
 
-The dataset contains preprocessed video data with synchronized physiological signals for remote heart rate estimation.
+The dataset used here contains preprocessed video data with synchronized physiological signals for remote heart rate estimation.
 
 ### Dataset Structure (Hugging Face Format)
 
