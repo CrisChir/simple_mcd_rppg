@@ -46,6 +46,7 @@ dataset = load_dataset("CrisChir/simple_mcd_rppg")
 ### Dataset Card Boilerplate
 
 ```markdown
+Original dataset 
 ---
 language:
 - en
@@ -68,7 +69,7 @@ datasets:
 
 - **Repository**: [CrisChir/simple_mcd_rppg](https://github.com/CrisChir/simple_mcd_rppg)
 - **Source**: Derivative of [wengziheng/mcd_rppg](https://huggingface.co/datasets/wengziheng/mcd_rppg)
-- **License**: CC BY-NC-ND 4.0
+- **License** of original dataset: CC BY 4.0
 
 ### Dataset Summary
 
