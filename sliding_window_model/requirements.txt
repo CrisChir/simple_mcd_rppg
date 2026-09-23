@@ -13,6 +13,7 @@ mediapipe>=0.10.0
 
 # Gradio
 gradio>=4.44.0,<5.0.0
+huggingface_hub>=0.24.0,<0.26.0
 
 # Utilities
 pathlib2>=2.3.0
