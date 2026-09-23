@@ -484,9 +484,10 @@ BPM across repeat uploads of the same video).
 
 ### Cross-platform issues
 
-- **`OSError: libEGL.so.1: cannot open shared object file`** — MediaPipe's native
-  library needs EGL, which was missing from the images. Both Dockerfiles now
-  install `libegl1`; pull the latest branch and rebuild with `--no-cache`:
+- **`OSError: libEGL.so.1 / libGLESv2.so.2: cannot open shared object file`** —
+  MediaPipe's native library needs the OpenGL/EGL runtime libraries, which
+  were missing from the images. Both Dockerfiles now install `libegl1` and
+  `libgles2`; pull the latest branch and rebuild with `--no-cache`:
 
   ```bash
   docker build --no-cache --platform linux/amd64 -t single-roi-rppg .
