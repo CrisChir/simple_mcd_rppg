@@ -49,9 +49,8 @@ RUN pip install --no-cache-dir mediapipe
 # Copy application files
 COPY . /app
 
-# Copy model files (if available in build context)
-# Note: For production, mount these as volumes or download at runtime
-COPY face_landmarker.task /app/face_landmarker.task || echo "face_landmarker.task not found in build context"
+# Note: face_landmarker.task is not copied at build time; entrypoint.sh
+# downloads it at runtime if missing (or mount it as a volume).
 
 # Create models directory
 RUN mkdir -p /app/sliding_window_model/models

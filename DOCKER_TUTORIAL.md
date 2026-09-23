@@ -392,7 +392,7 @@ if Docker Desktop uses the WSL 2 backend, `docker compose up` works unchanged.
 
 The entrypoint prints a pre-flight report: CUDA availability, presence of both
 checkpoints, and the MediaPipe `face_landmarker.task` model (auto-downloaded if
-missing). Then the app starts.
+missing — it is not baked into the image at build time). Then the app starts.
 
 ### 4.3 Use the app
 
