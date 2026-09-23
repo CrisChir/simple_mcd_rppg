@@ -5,6 +5,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      # Match the tutorial's manual build; without this, compose builds its
+      # own image (sliding_window_model-clinical-vitals-app) and ignores the
+      # one built via 'docker build -t clinical-vitals-app .'
+      platform: linux/amd64
+    image: clinical-vitals-app:latest
     container_name: clinical-vitals-app
     restart: unless-stopped
     ports:

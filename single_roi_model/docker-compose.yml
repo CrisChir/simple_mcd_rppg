@@ -5,6 +5,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      platform: linux/amd64
+    image: single-roi-rppg:latest
     container_name: single-roi-rppg
     environment:
       - RPPG_DATA_DIR=/data/preprocessed
