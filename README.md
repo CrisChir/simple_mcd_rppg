@@ -15,6 +15,14 @@ This repository provides a simplified approach to **remote photoplethysmography 
 - Simplified model architecture
 - Preprocessed dataset support (Hugging Face Datasets format)
 
+### Repository Layout
+
+- `single_roi_model/` — single ROI (forehead) PhysNet3D training and inference (`single_roi_forehead_physnet.py`, Dockerfile, smoke tests)
+- `sliding_window_model/` — 10-ROI spatiotemporal PhysNet + Gradio live clinical diagnostic web app (Docker deployment)
+- `deeper_model/` — deeper 10-ROI spatiotemporal PhysNet variants
+- `EDA&Preprocessing/` — dataset EDA and preprocessing notebooks
+- `DOCKER_TUTORIAL.md` — tutorial for running both model variants in Docker containers, including dataset download and testing instructions
+
 ## Dataset
 
 This work uses a **derivative dataset** based on:
