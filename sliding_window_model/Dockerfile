@@ -25,6 +25,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     libgl1 \
+    libegl1 \
     libglib2.0-0 \
     libsm6 \
     libxext6 \

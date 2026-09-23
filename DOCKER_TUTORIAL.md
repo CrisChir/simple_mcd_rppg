@@ -484,6 +484,18 @@ BPM across repeat uploads of the same video).
 
 ### Cross-platform issues
 
+- **`OSError: libEGL.so.1: cannot open shared object file`** — MediaPipe's native
+  library needs EGL, which was missing from the images. Both Dockerfiles now
+  install `libegl1`; pull the latest branch and rebuild with `--no-cache`:
+
+  ```bash
+  docker build --no-cache --platform linux/amd64 -t single-roi-rppg .
+  ```
+
+  Note: this error means the MediaPipe library could not load at all — it is
+  not about the `face_landmarker.task` model file, which downloads
+  automatically on first use into `RPPG_MODEL_DIR` (default `/app/models`,
+  i.e. your host `single_roi_model/models/` when mounted).
 - **`RuntimeError: Numpy is not available` / `A module that was compiled using NumPy 1.x cannot be run in NumPy 2.x`** —
   the `pytorch/pytorch:2.0.1-cuda11.7-cudnn8-runtime` base image ships
   PyTorch built against NumPy 1.x, but an unpinned `numpy` install pulls in
