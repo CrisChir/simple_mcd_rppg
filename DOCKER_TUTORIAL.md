@@ -484,7 +484,17 @@ BPM across repeat uploads of the same video).
 
 ### Cross-platform issues
 
-- **`FileNotFoundError: No .npz files found in DATA_DIR=...`** — the dataset
+- **`RuntimeError: Numpy is not available` / `A module that was compiled using NumPy 1.x cannot be run in NumPy 2.x`** —
+  the `pytorch/pytorch:2.0.1-cuda11.7-cudnn8-runtime` base image ships
+  PyTorch built against NumPy 1.x, but an unpinned `numpy` install pulls in
+  NumPy 2.x and breaks every `.cpu().numpy()` call. Both requirements files pin
+  `numpy>=1.24.0,<2.0.0`, so **rebuild without cache** after pulling:
+
+  ```bash
+  docker build --no-cache --platform linux/amd64 -t single-roi-rppg .
+  docker run --rm --entrypoint python single-roi-rppg /app/smoke_test.py
+  # -> All 5 checks passed
+  ```
   was not downloaded or is not mounted. Redo section 2.2 and check the
   `docker run -v` / compose volume paths.
 - **`expected 5D input (got 3D input)`** — you are running an old version of
@@ -513,6 +523,10 @@ BPM across repeat uploads of the same video).
 
 ### macOS
 
+- **`WARNING: The requested image's platform (linux/amd64) does not match the
+  detected host platform (linux/arm64/v8)`** (Apple Silicon) — expected and
+  harmless: the image runs under Rosetta 2 emulation. No action needed;
+  optionally silence it with `docker run --platform linux/amd64 ...`.
 - **`no matching manifest for linux/arm64/v8`** (Apple Silicon) — build/run
   with `--platform linux/amd64`; Rosetta 2 must be enabled in
   Docker Desktop → Settings → General.
