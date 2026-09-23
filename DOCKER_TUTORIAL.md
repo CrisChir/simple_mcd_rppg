@@ -544,6 +544,12 @@ BPM across repeat uploads of the same video).
 
 ### macOS
 
+- **`Error response from daemon: could not select device driver "nvidia" with
+  capabilities: [[gpu]]`** on `docker compose up` — macOS has no GPU passthrough,
+  and older versions of `sliding_window_model/docker-compose.yml` hard-required
+  an NVIDIA device. The reservation is now commented out; the app runs on CPU
+  automatically. Pull the latest branch and re-run `docker compose up`
+  (no rebuild needed — only the compose file changed).
 - **`WARNING: The requested image's platform (linux/amd64) does not match the
   detected host platform (linux/arm64/v8)`** (Apple Silicon) — expected and
   harmless: the image runs under Rosetta 2 emulation. No action needed;
