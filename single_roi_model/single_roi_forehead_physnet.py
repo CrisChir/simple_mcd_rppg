@@ -769,6 +769,8 @@ def run_video_inference_demo(video_path: str, model_path: str = None, max_frames
     filtered_rppg = (filtered_rppg - np.mean(filtered_rppg)) / p_std
     
     est_hr_fft = calculate_bpm_from_fft(filtered_rppg, fs=config.FS)
+    print(f"\nEstimated Heart Rate (FFT): {est_hr_fft:.1f} BPM")
+    print(f"Processed {len(frames)} frames from {os.path.basename(video_path)}")
     
     sample_img = Image.fromarray(frames[display_frame_idx].copy())
     ImageDraw.Draw(sample_img).rectangle(list(display_box), outline="lime", width=3)
@@ -779,7 +781,14 @@ def run_video_inference_demo(video_path: str, model_path: str = None, max_frames
     ax2.set_title(f"Reconstructed Waveform for {os.path.basename(video_path)}")
     ax2.set_xlabel("Frame Index"); ax2.set_ylabel("Filtered Pulse Amplitude")
     ax2.grid(True, linestyle='--', alpha=0.5); ax2.legend(loc='upper right', fontsize=10)
-    plt.tight_layout(); plt.show()
+    plt.tight_layout()
+    output_png = os.path.join(str(config.MODEL_DIR), f"inference_{os.path.splitext(os.path.basename(video_path))[0]}.png")
+    fig.savefig(output_png, dpi=150)
+    print(f"Saved waveform figure to '{output_png}'")
+    if 'DISPLAY' in os.environ or os.name != 'posix':
+        plt.show()
+    else:
+        plt.close(fig)
 
 
 if __name__ == "__main__":
