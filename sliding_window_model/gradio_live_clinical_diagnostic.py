@@ -156,22 +156,29 @@ class ClinicalVitalsRegressor(nn.Module):
         super(ClinicalVitalsRegressor, self).__init__()
         
         # 1D Conv feature extractor for PPG waveform morphology
-        self.wave_feature_extractor = nn.Sequential(
-            nn.Conv1d(1, 16, kernel_size=15, stride=2, padding=7),  # (B, 16, 225)
+        # (structure and layer names match the trained clinical_vitals_stage2_best.pth)
+        self.conv1d_features = nn.Sequential(
+            nn.Conv1d(1, 16, kernel_size=15, stride=2, padding=7),
             nn.BatchNorm1d(16),
             nn.ELU(),
-            nn.Conv1d(16, 32, kernel_size=15, stride=2, padding=7),  # (B, 32, 113)
+            nn.Conv1d(16, 32, kernel_size=15, stride=2, padding=7),
             nn.BatchNorm1d(32),
             nn.ELU(),
-            nn.AdaptiveAvgPool1d(1),                              # (B, 32, 1)
-            nn.Flatten()                                          # (B, 32)
+            nn.Conv1d(32, 64, kernel_size=15, stride=2, padding=7),
+            nn.BatchNorm1d(64),
+            nn.ELU(),
+            nn.AdaptiveAvgPool1d(1),                              # (B, 64, 1)
+            nn.Flatten()                                          # (B, 64)
         )
         
         # Fully Connected Regression Head
-        self.regressor = nn.Sequential(
-            nn.Linear(32, 64),
+        self.fc_regressor = nn.Sequential(
+            nn.Linear(64, 128),
+            nn.BatchNorm1d(128),
             nn.ELU(),
             nn.Dropout(0.2),
+            nn.Linear(128, 64),
+            nn.ELU(),
             nn.Linear(64, num_vitals)
         )
     
@@ -180,8 +187,8 @@ class ClinicalVitalsRegressor(nn.Module):
         if predicted_ppg_wave.dim() == 2:
             predicted_ppg_wave = predicted_ppg_wave.unsqueeze(1)
         
-        features = self.wave_feature_extractor(predicted_ppg_wave)
-        vitals_pred = self.regressor(features)
+        features = self.conv1d_features(predicted_ppg_wave)
+        vitals_pred = self.fc_regressor(features)
         return vitals_pred
 
 
