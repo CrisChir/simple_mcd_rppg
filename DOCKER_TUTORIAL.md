@@ -484,6 +484,13 @@ BPM across repeat uploads of the same video).
 
 ### Cross-platform issues
 
+- **`/app/face_landmarker.task: Is a directory` (container exits with code 1)** —
+  a stray `face_landmarker.task` *directory* (created by older compose files that
+  mounted the then-nonexistent file) got copied into the image by `COPY . /app`.
+  Delete it from your host checkout (`rm -rf sliding_window_model/face_landmarker.task`),
+  pull the latest branch, and rebuild with `--no-cache`. The entrypoint now also
+  removes such a stray directory before downloading, and `.dockerignore` keeps
+  host artifacts out of the build context.
 - **`python: can't open file '/app/sliding_window_model/gradio_live_clinical_diagnostic.py'`** —
   an older `entrypoint.sh` pointed at a path that does not exist in the image
   (the app is copied to `/app/gradio_live_clinical_diagnostic.py`). Pull the
