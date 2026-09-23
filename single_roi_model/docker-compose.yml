@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  single-roi-rppg:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: single-roi-rppg
+    environment:
+      - RPPG_DATA_DIR=/data/preprocessed
+      - RPPG_MODEL_DIR=/app/models
+      - RPPG_MODEL_SAVE_PATH=/app/models/single_roi_forehead_trained.pth
+      - CUDA_DEVICE=0
+    volumes:
+      # Preprocessed dataset (downloaded separately) - required for training
+      - ../data/preprocessed:/data/preprocessed:ro
+      # Raw videos for inference - required for the 'infer' command
+      - ../data/videos:/videos:ro
+      # Model checkpoints (persist newly trained weights)
+      - ./models:/app/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

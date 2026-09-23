@@ -56,6 +56,7 @@ except ImportError:
 
 def ensure_face_landmarker_model(model_path: str = None) -> str:
     if model_path is None:
+        os.makedirs(config.MODEL_DIR, exist_ok=True)
         model_path = os.path.join(config.MODEL_DIR, FACE_LANDMARKER_MODEL)
     if not os.path.exists(model_path):
         urllib.request.urlretrieve(FACE_LANDMARKER_URL, model_path)
@@ -132,11 +133,18 @@ def load_video_frames_ffmpeg(video_path: str, target_frames: int = None) -> np.n
 # CONFIGURATION
 # ============================================================================
 
+_CUDA_DEVICE_INDEX = int(os.environ.get('CUDA_DEVICE', '0'))
+
+def _resolve_device() -> str:
+    if torch.cuda.is_available() and _CUDA_DEVICE_INDEX < torch.cuda.device_count():
+        return f"cuda:{_CUDA_DEVICE_INDEX}"
+    return "cpu"
+
 @dataclass
 class Config:
-    DATA_DIR: Path = Path('/home/cristic/preprocessed_data/')
-    MODEL_DIR: Path = Path('./models')
-    MODEL_SAVE_PATH: Path = Path("single_roi_forehead_PRODUCTION.pth")
+    DATA_DIR: Path = Path(os.environ.get('RPPG_DATA_DIR', './data/preprocessed'))
+    MODEL_DIR: Path = Path(os.environ.get('RPPG_MODEL_DIR', './models'))
+    MODEL_SAVE_PATH: Path = Path(os.environ.get('RPPG_MODEL_SAVE_PATH', 'single_roi_forehead_trained.pth'))
     
     ROI_NAME: str = 'roi_forehead'
     IN_CHANNELS: int = 3
@@ -156,7 +164,7 @@ class Config:
     NUM_WORKERS: int = 8
     GRAD_CLIP: float = 5.0
     
-    DEVICE: str = "cuda:1" if torch.cuda.is_available() else "cpu"
+    DEVICE: str = _resolve_device()
     
     TRAIN_RATIO: float = 0.7
     VAL_RATIO: float = 0.15
@@ -166,7 +174,6 @@ class Config:
     LOG_BATCH_INTERVAL: int = 100
 
 config = Config()
-os.makedirs(config.MODEL_DIR, exist_ok=True)
 
 
 # ============================================================================
@@ -180,8 +187,13 @@ def butter_bandpass_filter(data: np.ndarray, lowcut: float = None, highcut: floa
     if fs is None: fs = config.FS
     if order is None: order = config.BUTTER_ORDER
     
+    data = np.asarray(data, dtype=np.float64)
     nyq = 0.5 * fs
     b, a = butter(order, [lowcut / nyq, highcut / nyq], btype='band')
+    padlen = 3 * max(len(a), len(b))
+    if data.size <= padlen:
+        logger.warning(f"Signal too short to filter ({data.size} samples, need > {padlen}); returning unfiltered signal")
+        return data
     return filtfilt(b, a, data)
 
 
@@ -208,7 +220,9 @@ def calculate_bpm_from_fft(signal_1d: np.ndarray, fs: float = None,
 
 def load_npz_file(file_path: str) -> Optional[Dict]:
     try: return np.load(file_path, allow_pickle=True)
-    except: return None
+    except Exception as e:
+        logger.warning(f"Failed to load {file_path}: {e}")
+        return None
 
 class SingleROIRPPGDataset(Dataset):
     def __init__(self, file_paths: List[str], sequence_length: int = None, augment: bool = False):
@@ -235,7 +249,7 @@ class SingleROIRPPGDataset(Dataset):
         
         ppg_key = 'ppg_values' if 'ppg_values' in data else 'ppg'
         try: ppg_segment = data[ppg_key][start:end].astype(np.float32)
-        except: return self._get_dummy_sample()
+        except Exception: return self._get_dummy_sample()
         
         ppg_segment = butter_bandpass_filter(ppg_segment, fs=config.FS)
         ppg_std = np.std(ppg_segment)
@@ -348,7 +362,7 @@ class SingleROIPhysNet(nn.Module):
             nn.Dropout(0.3),
             
             nn.Conv1d(64, 64, kernel_size=15, padding=14, dilation=2, padding_mode='replicate'),
-            nn.BatchNorm3d(64),
+            nn.BatchNorm1d(64),
             nn.ELU(inplace=True),
             nn.Dropout(0.3),
             
@@ -385,6 +399,7 @@ def predict_with_sliding_window(model: nn.Module, tensor_input: torch.Tensor, se
     B, C, T, H, W = tensor_input.shape
     stride = seq_len // 2
     
+    model.eval()
     if T <= seq_len:
         with torch.no_grad():
             return model(tensor_input).squeeze(0).cpu().numpy()
@@ -519,11 +534,15 @@ def infer_npz_file(model: nn.Module, npz_path: str, device: str = None, plot_res
         for alt_key in ['roi_forehead', 'forehead', 'roi_head']:
             if alt_key in data:
                 try: roi_data = data[alt_key]; break
-                except: continue
+                except Exception: continue
         else: return None
     else: roi_data = data[actual_key]
     
-    ppg_true = data['ppg_values'].astype(np.float32)
+    if 'ppg_values' in data: ppg_true = data['ppg_values'].astype(np.float32)
+    elif 'ppg' in data: ppg_true = data['ppg'].astype(np.float32)
+    else: ppg_true = None
+    if ppg_true is None or len(ppg_true) == 0: return None
+    
     if roi_data.ndim == 4: roi_data = np.transpose(roi_data, (3, 0, 1, 2))
     else: return None
     
@@ -574,6 +593,13 @@ def train_single_roi_pipeline():
     random.shuffle(shuffled_files)
 
     n_total = len(shuffled_files)
+    if n_total == 0:
+        raise FileNotFoundError(
+            f"No .npz files found in DATA_DIR='{config.DATA_DIR}'. "
+            "The preprocessed dataset is not included in this repository and must be "
+            "downloaded separately (see README.md). "
+            "Set the data directory via the RPPG_DATA_DIR environment variable."
+        )
     n_train = max(1, int(n_total * config.TRAIN_RATIO))
     n_val = max(1, int(n_total * config.VAL_RATIO))
 
@@ -581,9 +607,15 @@ def train_single_roi_pipeline():
     val_dataset = SingleROIRPPGDataset(shuffled_files[n_train:n_train + n_val], augment=False)
     eval_dataset = SingleROIRPPGDataset(shuffled_files[n_train + n_val:], augment=False)
 
-    train_loader = DataLoader(train_dataset, batch_size=config.BATCH_SIZE, shuffle=True, num_workers=config.NUM_WORKERS, pin_memory=True)
-    val_loader = DataLoader(val_dataset, batch_size=config.BATCH_SIZE, shuffle=False, num_workers=config.NUM_WORKERS, pin_memory=True)
+    train_loader = DataLoader(train_dataset, batch_size=config.BATCH_SIZE, shuffle=True, num_workers=config.NUM_WORKERS, pin_memory=True, drop_last=len(train_dataset) > config.BATCH_SIZE)
+    val_loader = DataLoader(val_dataset, batch_size=config.BATCH_SIZE, shuffle=False, num_workers=config.NUM_WORKERS, pin_memory=True, drop_last=len(val_dataset) > config.BATCH_SIZE)
     eval_loader = DataLoader(eval_dataset, batch_size=config.BATCH_SIZE, shuffle=False, num_workers=config.NUM_WORKERS, pin_memory=True)
+    
+    if len(val_dataset) == 0 or len(eval_dataset) == 0:
+        raise ValueError(
+            f"Not enough .npz files ({n_total}) to form non-empty train/val/test splits "
+            f"(ratios {config.TRAIN_RATIO}/{config.VAL_RATIO}/{config.TEST_RATIO})."
+        )
 
     model = SingleROIPhysNet().to(config.DEVICE)
     criterion = RhythmLoss(fps=config.FS)
@@ -720,6 +752,12 @@ def run_video_inference_demo(video_path: str, model_path: str = None, max_frames
     if os.path.exists(model_path):
         model.load_state_dict(torch.load(model_path, map_location=config.DEVICE, weights_only=False)['model_state_dict'])
         print(f"Loaded weights from '{model_path}'.")
+    else:
+        raise FileNotFoundError(
+            f"Model checkpoint not found at '{model_path}'. Download it separately or "
+            "train first with: python single_roi_forehead_physnet.py train "
+            "(see README.md)."
+        )
     
     # Use overlapping sliding window to perfectly match training distribution
     pred_signal = predict_with_sliding_window(model, tensor_input, seq_len=config.SEQUENCE_LENGTH)
@@ -745,8 +783,18 @@ def run_video_inference_demo(video_path: str, model_path: str = None, max_frames
 
 
 if __name__ == "__main__":
-    train_single_roi_pipeline()
+    import argparse
+    parser = argparse.ArgumentParser(description="Single ROI (forehead) PhysNet3D training and inference")
+    parser.add_argument('command', nargs='?', default='train', choices=['train', 'infer'],
+                        help="'train' runs the training pipeline; 'infer' runs video inference")
+    parser.add_argument('--video', type=str, default=None, help="Path to a video file for the 'infer' command")
+    parser.add_argument('--model', type=str, default=None, help="Path to a model checkpoint (.pth) for the 'infer' command")
+    parser.add_argument('--max-frames', type=int, default=None, help="Max video frames to process for the 'infer' command")
+    args = parser.parse_args()
     
-    # UNCOMMENT BELOW TO TEST WITH A VIDEO AFTER TRAINING
-    # test_video = "/home/cristic/data/Bgeorge/mcd_rppg/snapshots/929fb19c5ff2b5c8ed64a7c3a123744346674e88/video/9998_USBVideo_before.avi"
-    # run_video_inference_demo(test_video, max_frames=450)
+    if args.command == 'train':
+        train_single_roi_pipeline()
+    else:
+        if not args.video:
+            parser.error("--video is required for the 'infer' command")
+        run_video_inference_demo(args.video, model_path=args.model, max_frames=args.max_frames)
