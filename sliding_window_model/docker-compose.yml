@@ -5,11 +5,12 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      # Match the tutorial's manual build; without this, compose builds its
-      # own image (sliding_window_model-clinical-vitals-app) and ignores the
-      # one built via 'docker build -t clinical-vitals-app .'
-      platform: linux/amd64
+      # Without the image: tag, compose builds its own image
+      # (sliding_window_model-clinical-vitals-app) and ignores the one built
+      # via 'docker build -t clinical-vitals-app .'
     image: clinical-vitals-app:latest
+    # Match the tutorial's --platform linux/amd64 builds (Apple Silicon)
+    platform: linux/amd64
     container_name: clinical-vitals-app
     restart: unless-stopped
     ports:
