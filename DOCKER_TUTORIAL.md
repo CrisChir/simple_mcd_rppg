@@ -392,7 +392,7 @@ if Docker Desktop uses the WSL 2 backend, `docker compose up` works unchanged.
 
 The entrypoint prints a pre-flight report: CUDA availability, presence of both
 checkpoints, and the MediaPipe `face_landmarker.task` model (auto-downloaded if
-missing). Then the app starts.
+missing — it is not baked into the image at build time). Then the app starts.
 
 ### 4.3 Use the app
 
@@ -484,7 +484,56 @@ BPM across repeat uploads of the same video).
 
 ### Cross-platform issues
 
-- **`FileNotFoundError: No .npz files found in DATA_DIR=...`** — the dataset
+- **`/app/face_landmarker.task: Is a directory` (container exits with code 1)** —
+  a stray `face_landmarker.task` *directory* (created by older compose files that
+  mounted the then-nonexistent file) got copied into the image by `COPY . /app`.
+  Delete it from your host checkout (`rm -rf sliding_window_model/face_landmarker.task`),
+  pull the latest branch, and rebuild with `--no-cache`. The entrypoint now also
+  removes such a stray directory before downloading, and `.dockerignore` keeps
+  host artifacts out of the build context.
+- **`python: can't open file '/app/sliding_window_model/gradio_live_clinical_diagnostic.py'`** —
+  an older `entrypoint.sh` pointed at a path that does not exist in the image
+  (the app is copied to `/app/gradio_live_clinical_diagnostic.py`). Pull the
+  latest branch and rebuild; the entrypoint now uses the correct path.
+- **`Stage 1 model NOT found at /app/sliding_window_model/models/spatiotemporal_physnet_best_shuffle.pth`** —
+  that checkpoint was only in the repo-root `models/` folder. It is now also
+  committed under `sliding_window_model/models/` so the compose mount provides
+  it. `git pull` and re-run `docker compose up` (the mount is `:ro`, so no
+  rebuild is needed). Note: `spatiotemporal_physnet_best_shuffle_150frames.pth`
+  in the same folder is a *different* architecture (32-channel first conv) and
+  is NOT a drop-in replacement for the Stage 1 checkpoint.
+- **Build hangs at a geographic-area / timezone prompt (tzdata)** — older
+  versions of the Dockerfiles let `apt-get` ask interactively for a region and
+  city. Both now set `DEBIAN_FRONTEND=noninteractive` and `TZ=Etc/UTC`, so
+  builds run unattended. Pull the latest branch and rebuild.
+- **10-ROI build takes very long / re-downloads ~2 GB** — an earlier Dockerfile
+  created a virtual environment and reinstalled the entire PyTorch stack on top
+  of the base image. It now installs directly into the base environment, which
+  already ships torch 2.0.1, and the build is much smaller and faster.
+- **`OSError: libEGL.so.1 / libGLESv2.so.2: cannot open shared object file`** —
+  MediaPipe's native library needs the OpenGL/EGL runtime libraries, which
+  were missing from the images. Both Dockerfiles now install `libegl1` and
+  `libgles2`; pull the latest branch and rebuild with `--no-cache`:
+
+  ```bash
+  docker build --no-cache --platform linux/amd64 -t single-roi-rppg .
+  ```
+
+  Note: this error means the MediaPipe library could not load at all — it is
+  not about the `face_landmarker.task` model file, which downloads
+  automatically on first use into `RPPG_MODEL_DIR` (default `/app/models`,
+  i.e. your host `single_roi_model/models/` when mounted).
+- **`RuntimeError: Numpy is not available` / `A module that was compiled using NumPy 1.x cannot be run in NumPy 2.x`** —
+  the `pytorch/pytorch:2.0.1-cuda11.7-cudnn8-runtime` base image ships
+  PyTorch built against NumPy 1.x, but an unpinned `numpy` install pulls in
+  NumPy 2.x and breaks every `.cpu().numpy()` call. Both requirements files pin
+  `numpy>=1.24.0,<2.0.0`, so **rebuild without cache** after pulling:
+
+  ```bash
+  docker build --no-cache --platform linux/amd64 -t single-roi-rppg .
+  docker run --rm --entrypoint python single-roi-rppg /app/smoke_test.py
+  # -> All 5 checks passed
+  ```
   was not downloaded or is not mounted. Redo section 2.2 and check the
   `docker run -v` / compose volume paths.
 - **`expected 5D input (got 3D input)`** — you are running an old version of
@@ -513,6 +562,16 @@ BPM across repeat uploads of the same video).
 
 ### macOS
 
+- **`Error response from daemon: could not select device driver "nvidia" with
+  capabilities: [[gpu]]`** on `docker compose up` — macOS has no GPU passthrough,
+  and older versions of `sliding_window_model/docker-compose.yml` hard-required
+  an NVIDIA device. The reservation is now commented out; the app runs on CPU
+  automatically. Pull the latest branch and re-run `docker compose up`
+  (no rebuild needed — only the compose file changed).
+- **`WARNING: The requested image's platform (linux/amd64) does not match the
+  detected host platform (linux/arm64/v8)`** (Apple Silicon) — expected and
+  harmless: the image runs under Rosetta 2 emulation. No action needed;
+  optionally silence it with `docker run --platform linux/amd64 ...`.
 - **`no matching manifest for linux/arm64/v8`** (Apple Silicon) — build/run
   with `--platform linux/amd64`; Rosetta 2 must be enabled in
   Docker Desktop → Settings → General.

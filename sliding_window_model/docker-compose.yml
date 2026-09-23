@@ -12,7 +12,13 @@ services:
     volumes:
       # Mount model files (for development)
       - ./models:/app/sliding_window_model/models:ro
-      - ./face_landmarker.task:/app/face_landmarker.task:ro
+      # face_landmarker.task is NOT mounted: if it were and the file did not
+      # exist on the host, Docker would create a directory with that name and
+      # the read-only mount would break the automatic download in entrypoint.sh.
+      # The entrypoint downloads it into the container on first start (~10 MB).
+      # To persist it across container recreations, download it to the host and
+      # mount it explicitly:
+      #   - ./face_landmarker.task:/app/face_landmarker.task:ro
       # Mount data directory for persistent storage
       - ./data:/app/data
     environment:
@@ -25,13 +31,16 @@ services:
       - FACE_MODEL_PATH=/app/face_landmarker.task
       - MAX_FRAMES=450
       - CUDA_DEVICE=0
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+    # GPU support: uncomment on Linux/Windows hosts with the NVIDIA
+    # Container Toolkit. On macOS and CPU-only hosts the app runs on CPU
+    # automatically (torch.cuda.is_available() is False, CUDA_DEVICE ignored).
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
     
   # Optional: Nginx reverse proxy for production
   # Uncomment and configure for production deployment

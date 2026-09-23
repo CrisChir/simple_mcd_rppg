@@ -12,12 +12,17 @@ FROM pytorch/pytorch:2.0.1-cuda11.7-cudnn8-runtime
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PIP_NO_CACHE_DIR=off
+# Non-interactive package installs (prevents tzdata region/city prompts)
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Etc/UTC
 
 # Set working directory
 WORKDIR /app
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN ln -fs /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone && \
+    apt-get update && apt-get install -y --no-install-recommends \
+    tzdata \
     build-essential \
     cmake \
     git \
@@ -25,6 +30,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     libgl1 \
+    libegl1 \
+    libgles2 \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
@@ -32,11 +39,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Create and activate virtual environment
-RUN python -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-
-# Install Python dependencies
+# Install Python dependencies directly into the base environment.
+# The base image already ships PyTorch 2.0.1 + CUDA runtime; the previous
+# venv layer forced re-downloading the full ~2 GB torch stack.
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
@@ -47,9 +52,8 @@ RUN pip install --no-cache-dir mediapipe
 # Copy application files
 COPY . /app
 
-# Copy model files (if available in build context)
-# Note: For production, mount these as volumes or download at runtime
-COPY face_landmarker.task /app/face_landmarker.task || echo "face_landmarker.task not found in build context"
+# Note: face_landmarker.task is not copied at build time; entrypoint.sh
+# downloads it at runtime if missing (or mount it as a volume).
 
 # Create models directory
 RUN mkdir -p /app/sliding_window_model/models

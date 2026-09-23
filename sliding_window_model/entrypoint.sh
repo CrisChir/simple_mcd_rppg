@@ -44,6 +44,9 @@ if [ -f "$FACE_MODEL" ]; then
     echo "✅ MediaPipe face landmarker model found"
 else
     echo "⚠️  MediaPipe face landmarker model NOT found at $FACE_MODEL"
+    # Remove a stray directory that a bad build context may have copied in
+    # ('/app/face_landmarker.task: Is a directory' would otherwise kill wget)
+    rm -rf "$FACE_MODEL"
     echo "   Attempting to download..."
     
     # Try to download the model
@@ -56,6 +59,7 @@ else
         echo "❌ Failed to download MediaPipe face landmarker model"
         echo "   Please download manually from:"
         echo "   https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
+        echo "   and mount it: -v ./face_landmarker.task:/app/face_landmarker.task:ro"
     fi
 fi
 
@@ -65,5 +69,7 @@ echo "Access the application at: http://localhost:7860"
 echo ""
 
 # Run the Gradio application
-# Note: We use exec to replace the current process with the Python process
-exec python /app/sliding_window_model/gradio_live_clinical_diagnostic.py
+# Note: We use exec to replace the current process with the Python process.
+# The Dockerfile copies the build context (sliding_window_model/) into /app,
+# so the script lives at /app/gradio_live_clinical_diagnostic.py.
+exec python /app/gradio_live_clinical_diagnostic.py

@@ -12,11 +12,16 @@ FROM pytorch/pytorch:2.0.1-cuda11.7-cudnn8-runtime
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV MPLBACKEND=Agg
+# Non-interactive package installs (prevents tzdata region/city prompts)
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Etc/UTC
 
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
+    libegl1 \
+    libgles2 \
     libglib2.0-0 \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
