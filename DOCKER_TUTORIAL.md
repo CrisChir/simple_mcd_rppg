@@ -484,6 +484,14 @@ BPM across repeat uploads of the same video).
 
 ### Cross-platform issues
 
+- **Build hangs at a geographic-area / timezone prompt (tzdata)** — older
+  versions of the Dockerfiles let `apt-get` ask interactively for a region and
+  city. Both now set `DEBIAN_FRONTEND=noninteractive` and `TZ=Etc/UTC`, so
+  builds run unattended. Pull the latest branch and rebuild.
+- **10-ROI build takes very long / re-downloads ~2 GB** — an earlier Dockerfile
+  created a virtual environment and reinstalled the entire PyTorch stack on top
+  of the base image. It now installs directly into the base environment, which
+  already ships torch 2.0.1, and the build is much smaller and faster.
 - **`OSError: libEGL.so.1 / libGLESv2.so.2: cannot open shared object file`** —
   MediaPipe's native library needs the OpenGL/EGL runtime libraries, which
   were missing from the images. Both Dockerfiles now install `libegl1` and
