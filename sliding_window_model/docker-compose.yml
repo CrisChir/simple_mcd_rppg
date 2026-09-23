@@ -25,13 +25,16 @@ services:
       - FACE_MODEL_PATH=/app/face_landmarker.task
       - MAX_FRAMES=450
       - CUDA_DEVICE=0
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+    # GPU support: uncomment on Linux/Windows hosts with the NVIDIA
+    # Container Toolkit. On macOS and CPU-only hosts the app runs on CPU
+    # automatically (torch.cuda.is_available() is False, CUDA_DEVICE ignored).
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
     
   # Optional: Nginx reverse proxy for production
   # Uncomment and configure for production deployment
