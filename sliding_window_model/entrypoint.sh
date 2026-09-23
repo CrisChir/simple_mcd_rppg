@@ -65,5 +65,7 @@ echo "Access the application at: http://localhost:7860"
 echo ""
 
 # Run the Gradio application
-# Note: We use exec to replace the current process with the Python process
-exec python /app/sliding_window_model/gradio_live_clinical_diagnostic.py
+# Note: We use exec to replace the current process with the Python process.
+# The Dockerfile copies the build context (sliding_window_model/) into /app,
+# so the script lives at /app/gradio_live_clinical_diagnostic.py.
+exec python /app/gradio_live_clinical_diagnostic.py

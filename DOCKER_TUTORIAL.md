@@ -484,6 +484,17 @@ BPM across repeat uploads of the same video).
 
 ### Cross-platform issues
 
+- **`python: can't open file '/app/sliding_window_model/gradio_live_clinical_diagnostic.py'`** —
+  an older `entrypoint.sh` pointed at a path that does not exist in the image
+  (the app is copied to `/app/gradio_live_clinical_diagnostic.py`). Pull the
+  latest branch and rebuild; the entrypoint now uses the correct path.
+- **`Stage 1 model NOT found at /app/sliding_window_model/models/spatiotemporal_physnet_best_shuffle.pth`** —
+  that checkpoint was only in the repo-root `models/` folder. It is now also
+  committed under `sliding_window_model/models/` so the compose mount provides
+  it. `git pull` and re-run `docker compose up` (the mount is `:ro`, so no
+  rebuild is needed). Note: `spatiotemporal_physnet_best_shuffle_150frames.pth`
+  in the same folder is a *different* architecture (32-channel first conv) and
+  is NOT a drop-in replacement for the Stage 1 checkpoint.
 - **Build hangs at a geographic-area / timezone prompt (tzdata)** — older
   versions of the Dockerfiles let `apt-get` ask interactively for a region and
   city. Both now set `DEBIAN_FRONTEND=noninteractive` and `TZ=Etc/UTC`, so
