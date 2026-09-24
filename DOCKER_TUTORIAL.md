@@ -675,6 +675,116 @@ Notes:
 - **Same caveat as the UI applies:** the predicted vitals are research
   output, not a medical diagnosis — treat the values as experimental.
 
+### 4.7 Purpose-built REST API (clean JSON)
+
+Section 4.6 uses Gradio's auto-generated API, which returns an event stream
+and an HTML report. For programmatic integration there is also a dedicated
+FastAPI service (`sliding_window_model/api_server.py`) that reuses the exact
+same pipeline (MediaPipe landmarker, Stage 1, Stage 2, same HR calculation)
+and returns clean JSON:
+
+- `GET /health` — service status (`models_loaded` becomes `true` after the
+  first prediction triggers lazy loading)
+- `GET /vitals/keys` — the predicted vitals with their units
+- `POST /predict` — multipart upload of a face video
+- `POST /predict/path` — predict from a video already inside the container
+  (`{"video_path": "/app/data/foo.avi"}`)
+- Interactive docs (Swagger UI): <http://localhost:7861/docs>
+
+#### 4.7.1 Start the API
+
+The compose file runs it as a second service using the same image:
+
+```bash
+cd sliding_window_model
+docker compose up -d
+# The API container shares the image with the web app; both start together.
+curl -s http://localhost:7861/health
+# Expected: {"status":"ok","models_loaded":false}
+```
+
+The first prediction lazily loads the models (takes a few seconds); you can
+warm it up beforehand:
+
+```bash
+curl -s http://localhost:7861/vitals/keys | python3 -m json.tool
+```
+
+#### 4.7.2 Predict with a video upload
+
+```bash
+curl -s -X POST http://localhost:7861/predict \
+  -F "video=@/path/to/your_video.avi" | python3 -m json.tool
+```
+
+Response (abridged):
+
+```json
+{
+  "heart_rate_bpm": 72.4,
+  "heart_rate_source": "stage1_ppg_fft",
+  "frames_processed": 450,
+  "sampling_rate_fps": 30.0,
+  "ppg_waveform": [-0.12, -0.11, "..."],
+  "ppg_plot_png_base64": "iVBORw0KGgo...",
+  "vitals": {
+    "vital_pulse":       {"value": 71.8, "unit": "BPM"},
+    "vital_respiratory": {"value": 14.2, "unit": "br/m"},
+    "vital_saturation":  {"value": 97.5, "unit": "%"},
+    "vital_hemoglobin":  {"value": 14.1, "unit": "g/dL"},
+    "vital_glycated_hemoglobin": {"value": 5.4, "unit": "%"},
+    "vital_cholesterol": {"value": 182.0, "unit": "mg/dL"},
+    "vital_upper_ap":    {"value": 118.0, "unit": "mmHg"},
+    "vital_lower_ap":    {"value": 76.0, "unit": "mmHg"},
+    "vital_stress":      {"value": 3.0, "unit": "pts"}
+  },
+  "notes": "Research output, not a medical diagnosis."
+}
+```
+
+- **`heart_rate_bpm`** is computed from the Stage 1 rPPG waveform via FFT
+  (the same `calculate_bpm_from_fft` the Gradio app uses for its chart title).
+- **`ppg_waveform`** is the raw normalized waveform sampled at 30 FPS — plot
+  it yourself, or use the ready-made graph in **`ppg_plot_png_base64`**:
+
+```bash
+curl -s -X POST http://localhost:7861/predict \
+  -F "video=@/path/to/your_video.avi" \
+  | python3 -c "import sys,json,base64; d=json.load(sys.stdin); open('ppg.png','wb').write(base64.b64decode(d['ppg_plot_png_base64'])); print('saved ppg.png')"
+```
+
+If a video lives in `sliding_window_model/data/` (mounted at `/app/data`),
+skip the upload entirely:
+
+```bash
+curl -s -X POST http://localhost:7861/predict/path \
+  -H "Content-Type: application/json" \
+  -d '{"video_path": "/app/data/your_video.avi"}' | python3 -m json.tool
+```
+
+Windows (PowerShell) equivalent:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://localhost:7861/predict `
+  -Form @{ video = Get-Item C:\path\to\your_video.avi }
+```
+
+#### 4.7.3 Error responses
+
+| Status | Meaning |
+|---|---|
+| `400` | `video_path` missing in the JSON body |
+| `404` | container-path video not found |
+| `422` | no face detected in the video |
+| `500` | prediction pipeline failure (see container logs) |
+
+Notes:
+
+- Like the Gradio app, the API has **no authentication** — keep port 7861 on
+  localhost/trusted networks.
+- Both services read the same read-only model mount, so swapping checkpoints
+  requires only a `docker compose restart`, not a rebuild.
+
 ---
 
 ## 5. Side-by-side comparison

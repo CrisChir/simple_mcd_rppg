@@ -35,6 +35,31 @@ services:
       - FACE_MODEL_PATH=/app/face_landmarker.task
       - MAX_FRAMES=450
       - CUDA_DEVICE=0
+
+  # Purpose-built REST API (same image, different entrypoint): clean JSON
+  # vitals + HR + waveform + plot. See DOCKER_TUTORIAL.md section 4.7.
+  clinical-vitals-api:
+    image: clinical-vitals-app:latest
+    platform: linux/amd64
+    container_name: clinical-vitals-api
+    restart: unless-stopped
+    command: python /app/api_server.py
+    ports:
+      - "7861:7861"
+    volumes:
+      - ./models:/app/sliding_window_model/models:ro
+      - ./data:/app/data
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - API_HOST=0.0.0.0
+      - API_PORT=7861
+      - MODEL_DIR=/app/sliding_window_model/models
+      - FACE_MODEL_PATH=/app/face_landmarker.task
+      - MAX_FRAMES=450
+      - CUDA_DEVICE=0
+    depends_on:
+      - clinical-vitals-app
     # GPU support: uncomment on Linux/Windows hosts with the NVIDIA
     # Container Toolkit. On macOS and CPU-only hosts the app runs on CPU
     # automatically (torch.cuda.is_available() is False, CUDA_DEVICE ignored).
