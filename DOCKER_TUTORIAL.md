@@ -356,6 +356,49 @@ python single_roi_forehead_physnet.py infer --video C:\path\to\video.avi `
     --model models\single_roi_forehead_PRODUCTION.pth
 ```
 
+### 3.7 Evaluate all HuggingFace checkpoints (model comparison)
+
+The HuggingFace repo [Bgeorge/Single_ROI_RPPG](https://huggingface.co/Bgeorge/Single_ROI_RPPG)
+contains **18 forehead-ROI checkpoints** (BANDPASS, BULLETPROOF, CHROMINANCE,
+ENHANCED, FINAL, FIXED, FREQ_GUIDED, PRODUCTION, RESIDUAL, RHYTHM_TRACKER,
+SMOOTH, STABLE, STRICT_BANDPASS, TCN_VELOCITY, TRUE_3D, ULTIMATE,
+fully_optimized, physnet_best). `eval_hf_models.py` downloads all of them
+into a separate `models_hf_test/` directory (**the default model in
+`models/` is never touched**), extracts the forehead ROI from your test
+video once, then runs every checkpoint through the same sliding-window +
+bandpass + FFT pipeline and prints a BPM comparison table.
+
+Four of the checkpoints use legacy architectures that differ from the
+current `SingleROIPhysNet`; their layer definitions are reconstructed from
+the checkpoint tensor shapes inside the script, so all 18 load and run.
+
+```bash
+cd single_roi_model
+python eval_hf_models.py --list                 # download + load-check only
+python eval_hf_models.py --video ../data/1020_FullHDwebcam_before.avi --max-frames 450
+```
+
+The run writes:
+
+- `models_hf_test/hf_model_comparison.json` — per-model status, architecture,
+  FFT heart rate and signal std
+- `models_hf_test/eval_<model>.png` — the filtered rPPG waveform per model
+
+The directory `models_hf_test/` is git-ignored, so the downloads and
+results never pollute commits. To re-test after changing anything:
+
+```bash
+rm -rf models_hf_test
+python eval_hf_models.py --video ../data/1020_FullHDwebcam_before.avi
+```
+
+What to look for when comparing models on a ground-truth video:
+
+- **FFT BPM vs. the reference HR** — the value closest to the ground truth wins
+- **Signal quality** — in the PNGs, a clean periodic pulse beats noise; the
+  `signal_std` in the JSON hints at amplitude stability
+- **Consistency** — run the same video twice; stable models give the same BPM
+
 ---
 
 ## 4. 10 ROI model container (`sliding_window_model/`)
