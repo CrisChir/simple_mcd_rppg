@@ -466,6 +466,215 @@ inference through the web app with a 10–15 second face video at ~30 FPS and
 confirming a plausible heart rate (roughly 45–150 BPM, stable within a few
 BPM across repeat uploads of the same video).
 
+### 4.6 API access (10 ROI model)
+
+The Gradio web app **automatically exposes every UI event as a REST API** —
+no extra server or configuration needed. The "Analyze" button maps to the
+endpoint `/predict_vitals_gradio_pipeline`. There are two ways to call it:
+raw HTTP (curl / any language) and the `gradio_client` Python package.
+
+#### 4.6.1 Discover the API schema
+
+Open <http://localhost:7860/info> in your browser, or fetch it from the
+terminal with `curl -s http://localhost:7860/info | python3 -m json.tool`.
+It returns a JSON description of every endpoint. For this app it looks like
+this (abridged):
+
+```json
+{
+  "named_endpoints": {
+    "/predict_vitals_gradio_pipeline": {
+      "parameters": [
+        {
+          "label": "Record Webcam or Upload Video MP4",
+          "parameter_name": "video_path",
+          "type": {
+            "$defs": {
+              "FileData": {
+                "properties": {
+                  "path": {"title": "Path", "type": "string"},
+                  "url": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": null},
+                  "orig_name": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": null},
+                  "meta": {"default": {"_type": "gradio.FileData"}, "type": "object"}
+                },
+                "required": ["path"],
+                "title": "FileData",
+                "type": "object"
+              }
+            },
+            "properties": {
+              "video": {"$ref": "#/$defs/FileData"},
+              "subtitles": {"anyOf": [{"$ref": "#/$defs/FileData"}, {"type": "null"}], "default": null}
+            },
+            "required": ["video"],
+            "title": "VideoData",
+            "type": "object"
+          },
+          "python_type": {
+            "type": "Dict(video: filepath, subtitles: filepath | None)",
+            "description": ""
+          },
+          "component": "Video",
+          "example_input": {
+            "video": {
+              "path": "https://github.com/gradio-app/gradio/raw/main/demo/video_component/files/world.mp4",
+              "meta": {"_type": "gradio.FileData"},
+              "orig_name": "world.mp4"
+            }
+          }
+        }
+      ],
+      "returns": [
+        {
+          "label": "Extracted rPPG BVP Waveform",
+          "type": {
+            "properties": {
+              "type": {"enum": ["altair", "bokeh", "plotly", "matplotlib"], "type": "string"},
+              "plot": {"type": "string"}
+            },
+            "required": ["type", "plot"],
+            "title": "PlotData"
+          },
+          "component": "Plot"
+        },
+        {
+          "label": "Clinical Health Report",
+          "type": {"type": "string"},
+          "component": "Html"
+        }
+      ]
+    }
+  },
+  "unnamed_endpoints": {}
+}
+```
+
+**How to read the schema:**
+
+- `named_endpoints` — the API routes. Here there is exactly one,
+  `/predict_vitals_gradio_pipeline`, named after the Python function wired to
+  the Analyze button (`analyze_btn.click(fn=predict_vitals_gradio_pipeline, ...)`).
+- `parameters` — the function's inputs, one per `inputs=[...]` component.
+  This endpoint takes a single `gr.Video` value.
+- `type` — a JSON-Schema description of the input. The `$defs` section defines
+  reusable types:
+  - **`FileData`** describes a file handled by Gradio: the only required field
+    is `path` (where the file lives on the *server*, i.e. inside the
+    container). Optional fields: `url`, `size`, `orig_name`, `mime_type`,
+    `is_stream`, and `meta` (internal metadata — always
+    `{"_type": "gradio.FileData"}`).
+  - **`VideoData`** (the top-level type) wraps a `video` `FileData` plus an
+    optional `subtitles` `FileData`. So an input value looks like
+    `{"video": {"path": "...", "meta": {"_type": "gradio.FileData"}}, "subtitles": null}`.
+  - `python_type` is the shorthand the schema suggests you use in Python:
+    `Dict(video: filepath, subtitles: filepath | None)` — when using
+    `gradio_client`, a plain file path string is accepted and converted to
+    this structure automatically.
+- `returns` — the function's outputs, one per `outputs=[...]` component:
+  1. a `PlotData` object (the rPPG waveform: `type` names the plotting
+     library, `plot` holds the serialized chart), and
+  2. an HTML string — the clinical report containing the nine vital values
+     (pulse BPM, respiratory rate, SpO₂, hemoglobin, HbA1c, cholesterol,
+     upper/lower blood pressure, stress).
+- `unnamed_endpoints` — endpoints Gradio could not name; empty here.
+
+#### 4.6.2 Calling the API with curl (3-step flow)
+
+The API is asynchronous: you submit a job, get an `event_id`, then fetch the
+result. Inference on CPU takes a while, so poll step 3 until you see
+`event: complete`.
+
+**Step 1 — upload the video.** Gradio stores the file inside the container
+and returns its server-side path:
+
+```bash
+curl -s -X POST http://localhost:7860/upload \
+  -F "files=@/path/to/your_video.avi"
+# Response: ["/tmp/gradio/<hash>/your_video.avi"]
+```
+
+**Step 2 — submit the prediction job** with that path:
+
+```bash
+curl -s -X POST http://localhost:7860/call/predict_vitals_gradio_pipeline \
+  -H "Content-Type: application/json" \
+  -d '{"data": [{"video": {"path": "/tmp/gradio/<hash>/your_video.avi", "meta": {"_type": "gradio.FileData"}}, "subtitles": null}]}'
+# Response: {"event_id": "<event-id>"}
+```
+
+**Step 3 — fetch the result:**
+
+```bash
+curl -s -N http://localhost:7860/call/predict_vitals_gradio_pipeline/<event-id>
+```
+
+The response is an event stream; the final event contains both outputs:
+
+```
+event: complete
+data: [{"type": "matplotlib", "plot": "<serialized chart>"}, "<html clinical report>"]
+```
+
+The second `data` element is the same HTML report shown in the browser.
+
+Windows (PowerShell) equivalents — `curl.exe` (the real curl, not the
+`curl` alias for `Invoke-WebRequest`) or `Invoke-RestMethod`:
+
+```powershell
+# Step 1
+$upload = Invoke-RestMethod -Method Post -Uri http://localhost:7860/upload `
+  -Form @{ files = Get-Item C:\path\to\your_video.avi }
+$serverPath = $upload[0]
+
+# Step 2
+$body = @{ data = @(
+  @{ video = @{ path = $serverPath; meta = @{ _type = "gradio.FileData" } };
+     subtitles = $null }
+) } | ConvertTo-Json -Depth 6
+$job = Invoke-RestMethod -Method Post -Uri http://localhost:7860/call/predict_vitals_gradio_pipeline `
+  -ContentType "application/json" -Body $body
+
+# Step 3
+Invoke-RestMethod -Uri "http://localhost:7860/call/predict_vitals_gradio_pipeline/$($job.event_id)"
+```
+
+#### 4.6.3 Calling the API from Python (`gradio_client`)
+
+The `gradio_client` package handles upload, polling and the `VideoData`
+wrapper for you — recommended for scripted testing:
+
+```bash
+pip install "gradio-client==1.3.0"
+```
+
+```python
+from gradio_client import Client
+
+client = Client("http://localhost:7860/")
+result = client.predict(
+    video="/path/to/your_video.avi",
+    api_name="/predict_vitals_gradio_pipeline"
+)
+plot_data, report_html = result
+print(report_html)
+```
+
+`gradio_client` uses the same two-step flow under the hood; the `video=`
+argument may also be the tuple form
+`("/path/to/video.avi", "optional/subtitles.vtt")`.
+
+Notes:
+
+- **File paths are container paths.** Any path you pass directly in step 2
+  must exist inside the container. The compose file mounts
+  `sliding_window_model/data/` at `/app/data/`, so a video placed there can
+  be passed as `"path": "/app/data/foo.avi"` without the upload step.
+- **No authentication.** The app runs without `auth=` on `launch()`, so the
+  API is open on the exposed port. Do not expose port 7860 beyond
+  localhost/trusted networks.
+- **Same caveat as the UI applies:** the predicted vitals are research
+  output, not a medical diagnosis — treat the values as experimental.
+
 ---
 
 ## 5. Side-by-side comparison
